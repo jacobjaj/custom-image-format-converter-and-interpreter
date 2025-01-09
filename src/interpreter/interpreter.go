@@ -7,10 +7,10 @@ import (
 	"image/color"
 	"image"
 	"fmt"
-	"bufio"
+	"io"
 	"os"
 	"strings"
-	"strconv"
+	"encoding/binary"
 )
 
 func main() {
@@ -29,19 +29,16 @@ func main() {
 		fmt.Printf("Error %v\n", err)
 	}
 
-	sizeParams := strings.Split(content[0], "~")
-
-	w, _ := strconv.Atoi(sizeParams[0])
-	h, _ := strconv.Atoi(sizeParams[1])
+	w := int(binary.BigEndian.Uint16(content[0:2]))
+	h := int(binary.BigEndian.Uint16(content[2:4]))
 
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
 
-	var count int64 = 1
+	var count int64 = 4
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
-			colors := splitColor(content[count])
-			img.Set(x, y, color.RGBA{uint8(colors[0]), uint8(colors[1]), uint8(colors[2]), 255})
-			count++
+			img.Set(x, y, color.RGBA{content[count], content[count+1], content[count+2], 255})
+			count += 3
 		}
 	}
 
@@ -52,46 +49,19 @@ func main() {
 	window.ShowAndRun()
 }
 
-func splitColor(str string) [3]int {
-	colors := strings.Split(str, "/")
+func processFile(filePath string) ([]byte, error) {
+    file, err := os.Open(filePath)
+    if err != nil {
+        return nil, fmt.Errorf("opening file: %w", err)
+    }
+    defer file.Close()
 
-	var out [3]int
-	out[0],_ = strconv.Atoi(colors[0])
-	out[1], _ = strconv.Atoi(colors[1])
-	out[2], _ = strconv.Atoi(colors[2])
+    content, err := io.ReadAll(file) // Read the entire file at once
+    if err != nil {
+        return nil, fmt.Errorf("reading file: %w", err)
+    }
 
-	return out
-	
-}
-
-func processFile(filePath string) ([]string, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-			return nil, fmt.Errorf("opening file: %w", err)
-	}
-	defer file.Close()
-
-	var allFields []string // Single slice to hold all fields
-
-	scanner := bufio.NewScanner(file)
-
-	const maxFileSize = 20 * 1024 * 1024 // 20MB - adjust as needed
-	buf := make([]byte, maxFileSize)
-	scanner.Buffer(buf, maxFileSize)
-
-	for scanner.Scan() {
-			line := scanner.Text()
-			fields := splitLine(line)
-
-			// Append all fields from the current line to the main slice
-			allFields = append(allFields, fields...) // Use ... to append elements of a slice
-	}
-
-	if err := scanner.Err(); err != nil {
-			return nil, fmt.Errorf("scanning file: %w", err)
-	}
-
-	return allFields, nil
+    return content, nil
 }
 
 func splitLine(line string) []string {
