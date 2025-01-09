@@ -3,7 +3,10 @@ import (
 	"fmt"
 	"os"
 	_"image"
+	"io/ioutil"
 	"image/png"
+	"bytes"
+	"encoding/binary"
 	"strings"
 )
 
@@ -30,19 +33,11 @@ func main () {
 		}
 
 		bounds := img.Bounds()
-
-		newfile, err := os.OpenFile(v[0:len(v)-4]+".jacob", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			fmt.Printf("There was an error creating the new file.\n")
-			return
-		}
 		
-		boundsStr := fmt.Sprintf("%d~%d|", bounds.Max.X, bounds.Max.Y) 
-		_, err = newfile.Write([]byte(boundsStr))
-				if err != nil {
-					fmt.Printf("Error writing to file.")
-					return
-				}
+		xBits :=  intToBits(bounds.Max.X)
+		yBits := intToBits(bounds.Max.Y)
+
+		writeBits := append(xBits, yBits...)
 
 		fmt.Printf("Converting %v...\n", v)
 
@@ -50,23 +45,32 @@ func main () {
 			for x := bounds.Min.X; x < bounds.Max.X; x++ {
 				r, g, b, _ := img.At(x,y).RGBA()
 
-				r /= 256
-				g /= 256
-				b /= 256
+				rByte := uint8(r >> 8)
+				gByte := uint8(g >> 8)
+				bByte := uint8(b >> 8)
 
-				str := fmt.Sprintf("%d", r) + "/" + fmt.Sprintf("%d", g) + "/" + fmt.Sprintf("%d", b) + "|"
+				rgb := []byte{rByte, gByte, bByte}
 
-				_, err := newfile.Write([]byte(str))
-				if err != nil {
-					fmt.Printf("Error writing to file.")
-					return
-				}
+				writeBits = append(writeBits, rgb...)
 			}
 		}
 
-		defer newfile.Close()
+		err = ioutil.WriteFile(v[0:len(v)-4]+".jacob", writeBits, 0644)
+		if err != nil {
+			fmt.Printf("There was an error creating the new file.\n")
+			return
+		}
 	}
 
+}
+
+func intToBits(i int) []byte {
+	buf := new(bytes.Buffer)
+	err := binary.Write(buf, binary.BigEndian, int16(i))
+	if err != nil {
+			panic(err)
+	}
+	return buf.Bytes()
 }
 
 func validateArgs(args []string) bool {
